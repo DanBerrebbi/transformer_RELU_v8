@@ -564,6 +564,7 @@ class MultiHead_Attn_RELU(torch.nn.Module):
                 msk = torch.repeat_interleave(msk, K, dim=0)
             s = s.masked_fill(msk == 0, float('-inf'))  # score=-Inf to masked tokens
         w = torch.nn.functional.relu(s)  # [bs,nh,lq,lk] (these are the attention weights)
+        w = torch.nn.functional.softmax(w, dim=-1)
         w = self.dropout(w)  # [bs,nh,lq,lk]
 
         z = torch.matmul(w, V)  # [bs,nh,lq,lk] x [bs,nh,lv,vd] = [bs,nh,lq,vd] #thanks to lk==lv
