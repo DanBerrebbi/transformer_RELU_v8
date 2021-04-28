@@ -416,7 +416,6 @@ class Decoder(torch.nn.Module):
         self.norm_att_enc_src = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_att_enc_pre = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_ff = torch.nn.LayerNorm(emb_dim, eps=1e-6)
-        self.dropout =
 
 
     def forward(self, z_src, z_pre, tgt, msk_src, msk_pre, msk_tgt):
