@@ -431,14 +431,29 @@ class Decoder(torch.nn.Module):
         # NORM
         tmp1 = self.norm_att_enc_pre(tmp)
         # ATTN over pre words : q are words from the previous layer, k, v are pre words
-        tmp_pre = self.multihead_attn_enc_pre(q=tmp1, k=z_pre, v=z_pre, msk=msk_pre)
-        tmp_src = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)
-        tmp_total = tmp_src.add(tmp_pre)
+        w_src, V_src, WO_src = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)
+        w_pre, V_pre, WO_pre = self.multihead_attn_enc_pre(q=tmp1, k=z_pre, v=z_pre, msk=msk_pre)
+        bs, lq = w_src.shape[0], w_src.shape[2]
+        assert bs==w_pre.shape[0] and lq==w_pre.shape[2]
 
-        tmp = tmp_total + tmp
+        w_concat = torch.cat((w_src, w_pre), dim=-1)
+        W = torch.nn.functional.softmax(w_concat, dim=-1)
+        w_src_soft, w_pre_soft = W[:,:,:,:w_src.shape[-1]], W[:,:,:,w_src.shape[-1]:]
 
+        z_src = torch.matmul(w_src_soft, V_src)
+        z_src = z_src.transpose(1, 2).contiguous().view([bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+        z_src = WO_src(z_src)
 
+        z_pre = torch.matmul(w_pre_soft, V_pre)
+        z_pre = z_pre.transpose(1, 2).contiguous().view(
+            [bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+        z_pre = WO_pre(z_pre)
 
+        dropout = 0.1
+        dp_src, dp_pre = torch.nn.Dropout(dropout), torch.nn.Dropout(dropout)
+        z_src, z_pre = dp_src(z_src), dp_pre(z_pre)
+
+        tmp = tmp + z_src + z_pre
         # NORM
         tmp1 = self.norm_ff(tmp)
         # FF
@@ -566,10 +581,10 @@ class MultiHead_Attn_RELU(torch.nn.Module):
         # w = torch.nn.functional.softmax(w, dim=-1)
         w = self.dropout(w)  # [bs,nh,lq,lk]
 
-        z = torch.matmul(w, V)  # [bs,nh,lq,lk] x [bs,nh,lv,vd] = [bs,nh,lq,vd] #thanks to lk==lv
-        z = z.transpose(1, 2).contiguous().view([bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
-        z = self.WO(z)  # [bs,lq,ed]
-        return self.dropout(z)
+        #z = torch.matmul(w, V)  # [bs,nh,lq,lk] x [bs,nh,lv,vd] = [bs,nh,lq,vd] #thanks to lk==lv
+        #z = z.transpose(1, 2).contiguous().view([bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+        #z = self.WO(z)  # [bs,lq,ed]
+        return w, V, self.WO
 
 
 
