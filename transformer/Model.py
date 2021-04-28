@@ -433,7 +433,7 @@ class Decoder(torch.nn.Module):
         # ATTN over pre words : q are words from the previous layer, k, v are pre words
         w_src, V_src, WO_src = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)
         w_pre, V_pre, WO_pre = self.multihead_attn_enc_pre(q=tmp1, k=z_pre, v=z_pre, msk=msk_pre)
-        bs, lq = w_src.shape[0], w_src.shape[2]
+        bs, lq , nh, vd = w_src.shape[0], w_src.shape[2], w_src.shape[1], V_src.shape[-1]
         assert bs==w_pre.shape[0] and lq==w_pre.shape[2]
 
         w_concat = torch.cat((w_src, w_pre), dim=-1)
@@ -441,12 +441,12 @@ class Decoder(torch.nn.Module):
         w_src_soft, w_pre_soft = W[:,:,:,:w_src.shape[-1]], W[:,:,:,w_src.shape[-1]:]
 
         z_src = torch.matmul(w_src_soft, V_src)
-        z_src = z_src.transpose(1, 2).contiguous().view([bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+        z_src = z_src.transpose(1, 2).contiguous().view([bs, lq, nh * vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
         z_src = WO_src(z_src)
 
         z_pre = torch.matmul(w_pre_soft, V_pre)
         z_pre = z_pre.transpose(1, 2).contiguous().view(
-            [bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+            [bs, lq, nh * vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
         z_pre = WO_pre(z_pre)
 
         dropout = 0.1
