@@ -407,7 +407,8 @@ class Decoder(torch.nn.Module):
 
         super(Decoder, self).__init__()
         self.multihead_attn_self = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
-        self.multihead_attn_enc_src = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
+        #self.multihead_attn_enc_src = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
+        self.multihead_attn_enc_src = MultiHead_Attn_RELU(n_heads, emb_dim, qk_dim, v_dim, dropout)
         #self.multihead_attn_enc_pre = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
         self.multihead_attn_enc_pre = MultiHead_Attn_RELU(n_heads, emb_dim, qk_dim, v_dim, dropout)
         self.feedforward = FeedForward(emb_dim, ff_dim, dropout)
@@ -415,6 +416,8 @@ class Decoder(torch.nn.Module):
         self.norm_att_enc_src = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_att_enc_pre = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_ff = torch.nn.LayerNorm(emb_dim, eps=1e-6)
+        self.dropout =
+
 
     def forward(self, z_src, z_pre, tgt, msk_src, msk_pre, msk_tgt):
         # NORM
@@ -424,21 +427,18 @@ class Decoder(torch.nn.Module):
         # ADD
         tmp = tmp2 + tgt
 
+
+        ################################## STRUCTURE PARALLELE  ############################################
         # NORM
         tmp1 = self.norm_att_enc_pre(tmp)
-        ################################# CROSS ATTN 1  #####################################################
-        # ATTN over src words : q are words from the previous layer, k, v are src words
-        tmp3 = self.multihead_attn_enc_pre(q=tmp1, k=z_pre, v=z_pre, msk=msk_pre)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
-        # ADD
-        tmp = tmp3 + tmp
+        # ATTN over pre words : q are words from the previous layer, k, v are pre words
+        tmp_pre = self.multihead_attn_enc_pre(q=tmp1, k=z_pre, v=z_pre, msk=msk_pre)
+        tmp_src = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)
+        tmp_total = tmp_src.add(tmp_pre)
 
-        # NORM
-        tmp1 = self.norm_att_enc_src(tmp)
-        ################################# CROSS ATTN 2 #####################################################
-        # ATTN over src words : q are words from the previous layer, k, v are src words
-        tmp3 = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
-        # ADD
-        tmp = tmp3 + tmp
+        tmp = tmp_total + tmp
+
+
 
         # NORM
         tmp1 = self.norm_ff(tmp)
@@ -564,7 +564,7 @@ class MultiHead_Attn_RELU(torch.nn.Module):
                 msk = torch.repeat_interleave(msk, K, dim=0)
             s = s.masked_fill(msk == 0, float('-inf'))  # score=-Inf to masked tokens
         w = torch.nn.functional.relu(s)  # [bs,nh,lq,lk] (these are the attention weights)
-        w = torch.nn.functional.softmax(w, dim=-1)
+        # w = torch.nn.functional.softmax(w, dim=-1)
         w = self.dropout(w)  # [bs,nh,lq,lk]
 
         z = torch.matmul(w, V)  # [bs,nh,lq,lk] x [bs,nh,lv,vd] = [bs,nh,lq,vd] #thanks to lk==lv
