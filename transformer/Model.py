@@ -134,8 +134,9 @@ class Encoder_Decoder(torch.nn.Module):
         self.sim_emb = Embedding(src_voc_size, emb_dim, idx_pad)   # src_voc_size
         self.pre_emb = Embedding(tgt_voc_size, emb_dim, idx_pad)   # tgt_voc_size
         self.tgt_emb = Embedding(tgt_voc_size, emb_dim, idx_pad)
-        if share_embeddings:   # a quoi sert cette ligne ???
-            self.tgt_emb.emb.weight = self.src_emb.emb.weight
+        # if share_embeddings :   # a quoi sert cette ligne ???
+          #  self.tgt_emb.emb.weight = self.src_emb.emb.weight
+        self.tgt_emb.emb.weight = self.pre_emb.emb.weight = self.sim_emb.emb.weight = self.src_emb.emb.weight
 
         self.add_pos_enc = AddPositionalEncoding(emb_dim, dropout, max_len=5000)
         self.stacked_encoder_src = Stacked_Encoder_src(n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout)
