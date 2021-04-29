@@ -300,7 +300,7 @@ class Encoder_src(torch.nn.Module):
     def __init__(self, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Encoder_src, self).__init__()
         self.multihead_attn_self = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
-        self.multihead_attn_enc_sim = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
+        self.multihead_attn_enc_sim = MultiHead_Attn_RELU_SIM(n_heads, emb_dim, qk_dim, v_dim, dropout)
         self.feedforward = FeedForward(emb_dim, ff_dim, dropout)
         self.norm_att_self = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_att_enc_sim = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -587,6 +587,68 @@ class MultiHead_Attn_RELU(torch.nn.Module):
         #z = self.WO(z)  # [bs,lq,ed]
         return w, V, self.WO
 
+
+
+##############################################################################################################
+### MultiHead_Attn RELUUUUUUUUU SIIIIIIIIIM  ###########################################################################################
+##############################################################################################################
+class MultiHead_Attn_RELU_SIM(torch.nn.Module):
+    def __init__(self, n_heads, emb_dim, qk_dim, v_dim, dropout):
+        super(MultiHead_Attn_RELU_SIM, self).__init__()
+        self.nh = n_heads
+        self.ed = emb_dim
+        self.qd = qk_dim
+        self.kd = qk_dim
+        self.vd = v_dim
+        self.WQ = torch.nn.Linear(emb_dim, qk_dim * n_heads)
+        self.WK = torch.nn.Linear(emb_dim, qk_dim * n_heads)
+        self.WV = torch.nn.Linear(emb_dim, v_dim * n_heads)
+        self.WO = torch.nn.Linear(v_dim * n_heads, emb_dim)
+        self.dropout = torch.nn.Dropout(dropout)
+
+    def forward(self, q, k, v, msk=None):   ## A CHANGER !!!!!!
+        # q is [bs, lq, ed]
+        # k is [bs, lk, ed]
+        # v is [bs, lv, ed]
+        # msk is [bs, 1, ls] or [bs, lt, lt]
+        if msk is not None:
+            msk = msk.unsqueeze(1)  # [bs, 1, 1, ls] or [bs, 1, lt, lt]
+        bs = q.shape[0]
+        lq = q.shape[1]  ### sequence length of q vectors (length of target sentences)
+        lk = k.shape[1]  ### sequence length of k vectors (may be length of source/target sentences)
+        lv = v.shape[1]  ### sequence length of v vectors (may be length of source/target sentences)
+        ed = q.shape[2]
+        if not bs == v.shape[0] == k.shape[0]:
+            K = bs // v.shape[0]
+            v = torch.repeat_interleave(v, K,
+                                        dim=0)  # je peux faire un repeat_interleaves car c'est le même vecteur pre pour les K options du beam search
+            k = torch.repeat_interleave(k, K, dim=0)
+        assert self.ed == q.shape[2] == k.shape[2] == v.shape[2]
+        assert lk == lv  # when applied in decoder both refer the source-side (lq refers the target-side)
+        Q = self.WQ(q).contiguous().view([bs, lq, self.nh, self.qd]).permute(0, 2, 1,
+                                                                             3)  # => [bs,lq,nh*qd] => [bs,lq,nh,qd] => [bs,nh,lq,qd]
+
+        K = self.WK(k).contiguous().view([bs, lv, self.nh, self.kd]).permute(0, 2, 1,
+                                                                             3)  # => [bs,lk,nh*kd] => [bs,lk,nh,kd] => [bs,nh,lk,kd]
+        V = self.WV(v).contiguous().view([bs, lv, self.nh, self.vd]).permute(0, 2, 1,
+                                                                             3)  # => [bs,lv,nh*vd] => [bs,lv,nh,vd] => [bs,nh,lv,vd]
+        # Scaled dot-product Attn from multiple Q, K, V vectors (bs*nh*l vectors)
+        Q = Q / math.sqrt(self.kd)
+        s = torch.matmul(Q, K.transpose(2,
+                                        3))  # [bs,nh,lq,qd] x [bs,nh,kd,lk] = [bs,nh,lq,lk] # thanks to qd==kd #in decoder lq are target words and lk are source words
+        if msk is not None:
+            if msk.shape[0] != bs:
+                K = bs // msk.shape[0]
+                msk = torch.repeat_interleave(msk, K, dim=0)
+            s = s.masked_fill(msk == 0, float('-inf'))  # score=-Inf to masked tokens
+        w = torch.nn.functional.relu(s)  # [bs,nh,lq,lk] (these are the attention weights)
+        # w = torch.nn.functional.softmax(w, dim=-1)
+        w = self.dropout(w)  # [bs,nh,lq,lk]
+
+        z = torch.matmul(w, V)  # [bs,nh,lq,lk] x [bs,nh,lv,vd] = [bs,nh,lq,vd] #thanks to lk==lv
+        z = z.transpose(1, 2).contiguous().view([bs, lq, self.nh * self.vd])  # => [bs,lq,nh,vd] => [bs,lq,nh*vd]
+        z = self.WO(z)  # [bs,lq,ed]
+        return z
 
 
 ##############################################################################################################
