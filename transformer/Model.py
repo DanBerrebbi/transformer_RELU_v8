@@ -417,6 +417,8 @@ class Decoder(torch.nn.Module):
         self.norm_att_enc_src = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_att_enc_pre = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_ff = torch.nn.LayerNorm(emb_dim, eps=1e-6)
+        self.norm_att_enc_src2 = torch.nn.LayerNorm(emb_dim, eps=1e-6)
+        self.multihead_attn_enc_src2 = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
 
 
     def forward(self, z_src, z_pre, tgt, msk_src, msk_pre, msk_tgt):
@@ -455,6 +457,16 @@ class Decoder(torch.nn.Module):
         z_src, z_pre = dp_src(z_src), dp_pre(z_pre)
 
         tmp = tmp + z_src + z_pre
+
+
+
+        # NORM
+        tmp1 = self.norm_att_enc_src2(tmp)
+        # ATTN over src words : q are words from the previous layer, k, v are src words
+        tmp3 = self.multihead_attn_enc_src2(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
+        # ADD
+        tmp = tmp3 + tmp
+
         # NORM
         tmp1 = self.norm_ff(tmp)
         # FF
