@@ -430,6 +430,13 @@ class Decoder(torch.nn.Module):
         tmp = tmp2 + tgt
 
 
+        # NORM
+        tmp1 = self.norm_att_enc_src2(tmp)
+        # ATTN over src words : q are words from the previous layer, k, v are src words
+        tmp3 = self.multihead_attn_enc_src2(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
+        # ADD
+        tmp = tmp3 + tmp
+
         ################################## STRUCTURE PARALLELE  ############################################
         # NORM
         tmp1 = self.norm_att_enc_pre(tmp)
@@ -458,14 +465,6 @@ class Decoder(torch.nn.Module):
 
         tmp = tmp + z_src + z_pre
 
-
-
-        # NORM
-        tmp1 = self.norm_att_enc_src2(tmp)
-        # ATTN over src words : q are words from the previous layer, k, v are src words
-        tmp3 = self.multihead_attn_enc_src2(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
-        # ADD
-        tmp = tmp3 + tmp
 
         # NORM
         tmp1 = self.norm_ff(tmp)
