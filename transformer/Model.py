@@ -234,6 +234,7 @@ class AddPositionalEncoding(torch.nn.Module):
 class Stacked_Encoder_src(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Encoder_src, self).__init__()
+        n_layers = 2
         self.encoderlayers = torch.nn.ModuleList(
             [Encoder_src(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -250,6 +251,7 @@ class Stacked_Encoder_src(torch.nn.Module):
 class Stacked_Encoder_sim(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Encoder_sim, self).__init__()
+        n_layers = 1
         self.encoderlayers = torch.nn.ModuleList(
             [Encoder_sim(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -266,6 +268,7 @@ class Stacked_Encoder_sim(torch.nn.Module):
 class Stacked_Encoder_pre(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Encoder_pre, self).__init__()
+        n_layers = 1
         self.encoderlayers = torch.nn.ModuleList(
             [Encoder_pre(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -282,6 +285,7 @@ class Stacked_Encoder_pre(torch.nn.Module):
 class Stacked_Decoder(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Decoder, self).__init__()
+        n_layers = 3
         self.decoderlayers = torch.nn.ModuleList(
             [Decoder(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -399,7 +403,6 @@ class Encoder_pre(torch.nn.Module):
         return z
 
 
-
 ##############################################################################################################
 ### Decoder -> OK ##################################################################################################
 ##############################################################################################################
@@ -433,9 +436,9 @@ class Decoder(torch.nn.Module):
         # NORM
         tmp1 = self.norm_att_enc_src2(tmp)
         # ATTN over src words : q are words from the previous layer, k, v are src words
-        tmp3 = self.multihead_attn_enc_src2(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
+        TMP3 = self.multihead_attn_enc_src2(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # la query reste tmp1 car tmp1 est la variable en sortie du précédent layer
         # ADD
-        tmp = tmp3 + tmp
+        #tmp = tmp3 + tmp
 
         ################################## STRUCTURE PARALLELE  ############################################
         # NORM
@@ -463,7 +466,7 @@ class Decoder(torch.nn.Module):
         dp_src, dp_pre = torch.nn.Dropout(dropout), torch.nn.Dropout(dropout)
         z_src, z_pre = dp_src(z_src), dp_pre(z_pre)
 
-        tmp = tmp + z_src + z_pre
+        tmp = tmp + TMP3 + z_pre
 
 
         # NORM
@@ -473,7 +476,6 @@ class Decoder(torch.nn.Module):
         # ADD
         z = tmp2 + tmp
         return z
-
 
 
 
