@@ -150,12 +150,12 @@ class Encoder_Decoder(torch.nn.Module):
         # tgt is [bs,lt]
         # msk_src is [bs,1,ls] (False where <pad> True otherwise)
         # mst_tgt is [bs,lt,lt]
+        ### encoder src #####
+        src = self.add_pos_enc(self.src_emb(src))  # [bs,ls,ed]
+        z_src = self.stacked_encoder_src(src, msk_src)  # [bs,ls,ed]
         ### encoder sim #####
         sim = self.add_pos_enc(self.sim_emb(sim))  # [bs,ls,ed]
-        z_sim = self.stacked_encoder_sim(sim, msk_sim)  # [bs,ls,ed]
-        ### encoder sim #####
-        src = self.add_pos_enc(self.src_emb(src))  # [bs,ls,ed]
-        z_src = self.stacked_encoder_src(src, msk_src, z_sim, msk_sim)  # [bs,ls,ed]
+        z_sim = self.stacked_encoder_sim(sim, msk_sim, z_src, msk_src)  # [bs,ls,ed]
         ### encoder pre #####
         pre = self.add_pos_enc(self.pre_emb(pre))  # [bs,ls,ed]
         z_pre = self.stacked_encoder_pre(pre, msk_pre, z_sim, msk_sim)  # [bs,ls,ed]
@@ -166,15 +166,15 @@ class Encoder_Decoder(torch.nn.Module):
         y = self.generator(z_tgt)  # [bs, lt, Vt]
         return y  ### returns logits (for learning)
 
-    def encode_src(self, src, msk_src, z_sim, msk_sim):               # je trouve la fonction encode et la fonction decode redondante avec forward
-        src = self.add_pos_enc(self.src_emb(src))  # [bs,ls,ed]
-        z_src = self.stacked_encoder_src(src, msk_src, z_sim, msk_sim)  # [bs,ls,ed]
-        return z_src
-
-    def encode_sim(self, sim, msk_sim):               # je trouve la fonction encode et la fonction decode redondante avec forward
+    def encode_sim(self, sim, msk_sim, z_src, msk_src):               # je trouve la fonction encode et la fonction decode redondante avec forward
         sim = self.add_pos_enc(self.sim_emb(sim))  # [bs,ls,ed]
-        z_sim = self.stacked_encoder_sim(sim, msk_sim)  # [bs,ls,ed]
+        z_sim = self.stacked_encoder_sim(sim, msk_sim, z_src, msk_src)  # [bs,ls,ed]
         return z_sim
+
+    def encode_src(self, src, msk_src):               # je trouve la fonction encode et la fonction decode redondante avec forward
+        src = self.add_pos_enc(self.src_emb(src))  # [bs,ls,ed]
+        z_src = self.stacked_encoder_src(src, msk_src)  # [bs,ls,ed]
+        return z_src
 
     def encode_pre(self, pre, msk_pre, z_sim, msk_sim):               # je trouve la fonction encode et la fonction decode redondante avec forward
         pre = self.add_pos_enc(self.pre_emb(pre))  # [bs,ls,ed]
@@ -229,37 +229,37 @@ class AddPositionalEncoding(torch.nn.Module):
 
 
 ##############################################################################################################
-### Stacked_Encoder SRC -> OK ##########################################################################################
-##############################################################################################################
-class Stacked_Encoder_src(torch.nn.Module):
-    def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
-        super(Stacked_Encoder_src, self).__init__()
-        n_layers = 2
-        self.encoderlayers = torch.nn.ModuleList(
-            [Encoder_src(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
-        self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
-
-    def forward(self, src, msk_src, z_sim, msk_sim):
-        for i, encoderlayer in enumerate(self.encoderlayers):
-            src = encoderlayer(src, msk_src, z_sim, msk_sim)  # [bs, ls, ed]
-        return self.norm(src)
-
-
-##############################################################################################################
 ### Stacked_Encoder SIM -> OK ##########################################################################################
 ##############################################################################################################
 class Stacked_Encoder_sim(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Encoder_sim, self).__init__()
-        n_layers = 1
+        n_layers = 2
         self.encoderlayers = torch.nn.ModuleList(
             [Encoder_sim(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
 
-    def forward(self, sim, msk_sim):
+    def forward(self, sim, msk_sim, z_src, msk_src):
         for i, encoderlayer in enumerate(self.encoderlayers):
-            sim = encoderlayer(sim, msk_sim)  # [bs, ls, ed]
+            sim = encoderlayer(sim, msk_sim, z_src, msk_src)  # [bs, ls, ed]
         return self.norm(sim)
+
+
+##############################################################################################################
+### Stacked_Encoder SRC -> OK ##########################################################################################
+##############################################################################################################
+class Stacked_Encoder_src(torch.nn.Module):
+    def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
+        super(Stacked_Encoder_src, self).__init__()
+        n_layers = 4
+        self.encoderlayers = torch.nn.ModuleList(
+            [Encoder_src(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
+        self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
+
+    def forward(self, src, msk_src):
+        for i, encoderlayer in enumerate(self.encoderlayers):
+            src = encoderlayer(src, msk_src)  # [bs, ls, ed]
+        return self.norm(src)
 
 
 ##############################################################################################################
@@ -268,7 +268,7 @@ class Stacked_Encoder_sim(torch.nn.Module):
 class Stacked_Encoder_pre(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Encoder_pre, self).__init__()
-        n_layers = 1
+        n_layers = 2
         self.encoderlayers = torch.nn.ModuleList(
             [Encoder_pre(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -285,7 +285,7 @@ class Stacked_Encoder_pre(torch.nn.Module):
 class Stacked_Decoder(torch.nn.Module):
     def __init__(self, n_layers, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
         super(Stacked_Decoder, self).__init__()
-        n_layers = 3
+        n_layers = 2
         self.decoderlayers = torch.nn.ModuleList(
             [Decoder(ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout) for _ in range(n_layers)])
         self.norm = torch.nn.LayerNorm(emb_dim, eps=1e-6)
@@ -300,28 +300,28 @@ class Stacked_Decoder(torch.nn.Module):
 ##############################################################################################################
 ### Encoder SRC -> BUEN ##################################################################################################
 ##############################################################################################################
-class Encoder_src(torch.nn.Module):
+class Encoder_sim(torch.nn.Module):
     def __init__(self, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
-        super(Encoder_src, self).__init__()
+        super(Encoder_sim, self).__init__()
         self.multihead_attn_self = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
-        self.multihead_attn_enc_sim = MultiHead_Attn_RELU_SIM(n_heads, emb_dim, qk_dim, v_dim, dropout)
+        self.multihead_attn_enc_src = MultiHead_Attn_RELU_SIM(n_heads, emb_dim, qk_dim, v_dim, dropout)
         self.feedforward = FeedForward(emb_dim, ff_dim, dropout)
         self.norm_att_self = torch.nn.LayerNorm(emb_dim, eps=1e-6)
-        self.norm_att_enc_sim = torch.nn.LayerNorm(emb_dim, eps=1e-6)
+        self.norm_att_enc_src = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_ff = torch.nn.LayerNorm(emb_dim, eps=1e-6)
 
-    def forward(self, src, msk_src, z_sim, msk_sim):
+    def forward(self, sim, msk_sim, z_src, msk_src):
         # NORM
-        tmp1 = self.norm_att_self(src)
+        tmp1 = self.norm_att_self(sim)
         # ATTN over source words
-        tmp2 = self.multihead_attn_self(q=tmp1, k=tmp1, v=tmp1, msk=msk_src)  # [bs, ls, ed] contains dropout
+        tmp2 = self.multihead_attn_self(q=tmp1, k=tmp1, v=tmp1, msk=msk_sim)  # [bs, ls, ed] contains dropout
         # ADD
-        tmp = tmp2 + src
+        tmp = tmp2 + sim
 
         # NORM
-        tmp1 = self.norm_att_enc_sim(tmp)
-        # ATTN over sim words : q are sim words, k, v are src words
-        tmp2 = self.multihead_attn_enc_sim(q=tmp1, k=z_sim, v=z_sim, msk=msk_sim)  # [bs, lt, ed] contains dropout
+        tmp1 = self.norm_att_enc_src(tmp)
+        # ATTN over src words : q are src words, k, v are src words
+        tmp2 = self.multihead_attn_enc_src(q=tmp1, k=z_src, v=z_src, msk=msk_src)  # [bs, lt, ed] contains dropout
         # ADD
         tmp = tmp2 + tmp
 
@@ -336,23 +336,23 @@ class Encoder_src(torch.nn.Module):
 
 
 ##############################################################################################################
-### Encoder SIM -> BUEN ##################################################################################################
+### Encoder src -> BUEN ##################################################################################################
 ##############################################################################################################
-class Encoder_sim(torch.nn.Module):
+class Encoder_src(torch.nn.Module):
     def __init__(self, ff_dim, n_heads, emb_dim, qk_dim, v_dim, dropout):
-        super(Encoder_sim, self).__init__()
+        super(Encoder_src, self).__init__()
         self.multihead_attn_self = MultiHead_Attn(n_heads, emb_dim, qk_dim, v_dim, dropout)
         self.feedforward = FeedForward(emb_dim, ff_dim, dropout)
         self.norm_att_self = torch.nn.LayerNorm(emb_dim, eps=1e-6)
         self.norm_ff = torch.nn.LayerNorm(emb_dim, eps=1e-6)
 
-    def forward(self, sim, msk_sim):
+    def forward(self, src, msk_src):
         # NORM
-        tmp1 = self.norm_att_self(sim)
+        tmp1 = self.norm_att_self(src)
         # ATTN over source words
-        tmp2 = self.multihead_attn_self(q=tmp1, k=tmp1, v=tmp1, msk=msk_sim)  # [bs, ls, ed] contains dropout
+        tmp2 = self.multihead_attn_self(q=tmp1, k=tmp1, v=tmp1, msk=msk_src)  # [bs, ls, ed] contains dropout
         # ADD
-        tmp = tmp2 + sim
+        tmp = tmp2 + src
 
         # NORM
         tmp1 = self.norm_ff(tmp)
