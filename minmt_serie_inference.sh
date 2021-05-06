@@ -17,7 +17,7 @@ dir=$josep/minmt_base
 dnet=$PWD/model_serie
 
 
-fmod=$dnet/network.checkpoint_00410000.pt ####### A MODIF
+fmod=$dnet/network.checkpoint_00010000.pt ####### A MODIF
 
 	for corpus in ECB; do
 	    echo $corpus
