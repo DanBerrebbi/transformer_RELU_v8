@@ -17,7 +17,7 @@ dir=$josep/minmt_base
 dnet=$PWD/model_serie
 
 
-fmod=$dnet/network.checkpoint_00460000.pt ####### A MODIF
+fmod=$dnet/network.checkpoint_00565000.pt ####### A MODIF
 
 	for corpus in EMEA; do
 	    echo $corpus
